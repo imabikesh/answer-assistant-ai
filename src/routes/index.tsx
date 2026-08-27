@@ -212,7 +212,7 @@ function StudioPage() {
                   Content
                 </h2>
                 <Toggle
-                  label="Include hints &amp; steps"
+                  label="Include hints & steps"
                   on={options.includeHints}
                   onChange={(v) => setOptions((o) => ({ ...o, includeHints: v }))}
                 />
@@ -449,7 +449,7 @@ function Toggle({
       onClick={() => onChange(!on)}
       className="flex w-full cursor-pointer items-center justify-between"
     >
-      <span className="text-sm" dangerouslySetInnerHTML={{ __html: label }} />
+      <span className="text-sm">{label}</span>
       <span
         className={`relative inline-flex h-5 w-9 items-center rounded-full ring-1 ring-black/10 ${
           on ? "bg-sage" : "bg-sand"
