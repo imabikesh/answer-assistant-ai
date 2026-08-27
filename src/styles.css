@@ -167,5 +167,42 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-body);
   }
 }
+
+@keyframes solve-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scan-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@utility solve {
+  animation: solve-in 0.6s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@utility scan {
+  animation: scan-bar 1.4s ease-in-out infinite;
+}
+
+@utility shadow-paper {
+  box-shadow: var(--shadow-paper);
+}
+
