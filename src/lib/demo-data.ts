@@ -1,6 +1,6 @@
 export type Question = {
   id: number;
-  page: number;
+  page: number | null;
   prompt: string;
   options?: string[];
   answer: string;
@@ -165,5 +165,5 @@ export function pickDemoSet(fileName: string): DemoSet {
   const match = DEMO_SETS.find((s) => lower.includes(s.subject.toLowerCase()));
   if (match) return match;
   const sum = [...fileName].reduce((a, c) => a + c.charCodeAt(0), 0);
-  return DEMO_SETS[sum % DEMO_SETS.length]!;
+  return DEMO_SETS[sum % DEMO_SETS.length] ?? DEMO_SETS[0] ?? { subject: "Study", title: "Study booklet", questions: [] };
 }

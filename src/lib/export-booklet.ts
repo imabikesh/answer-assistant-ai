@@ -79,7 +79,7 @@ export async function downloadDocx(
     }
     const tail: string[] = [];
     if (options.includeTopicTags) tail.push(`Topic: ${q.topic}`);
-    if (options.includeSourceRefs) tail.push(`Source: p. ${q.page}`);
+    if (options.includeSourceRefs && q.page !== null) tail.push(`Source: p. ${q.page}`);
     if (tail.length) {
       children.push(
         new Paragraph({
@@ -108,7 +108,7 @@ export async function downloadDocx(
       spacing: { before: 400 },
       alignment: AlignmentType.CENTER,
       children: [
-        new TextRun({ text: "Generated with Vellum Study Compiler (demo data)", size: 16 }),
+        new TextRun({ text: "Generated with Vellum Study Compiler", size: 16 }),
       ],
     }),
   );
@@ -139,7 +139,7 @@ export function downloadPdf(set: DemoSet, options: BookletOptions, sourceName: s
     doc.setFont("times", opts.style ?? "normal");
     doc.setFontSize(opts.size);
     const c = opts.color ?? [42, 39, 31];
-    doc.setTextColor(c[0]!, c[1]!, c[2]!);
+    doc.setTextColor(c[0] ?? 42, c[1] ?? 39, c[2] ?? 31);
     const indent = opts.indent ?? 0;
     const lines = doc.splitTextToSize(text, width - indent) as string[];
     lines.forEach((line) => {
@@ -171,7 +171,7 @@ export function downloadPdf(set: DemoSet, options: BookletOptions, sourceName: s
     }
     const tail: string[] = [];
     if (options.includeTopicTags) tail.push(`Topic: ${q.topic}`);
-    if (options.includeSourceRefs) tail.push(`Source: p. ${q.page}`);
+    if (options.includeSourceRefs && q.page !== null) tail.push(`Source: p. ${q.page}`);
     if (tail.length) {
       write(tail.join("  ·  "), { size: 9, indent: 18, color: [122, 116, 102] });
     }
