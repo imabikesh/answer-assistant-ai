@@ -8,3 +8,8 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Read uploaded papers in server-only modules using in-memory worker-compatible parsers; this avoids exposing document parsing or secrets to browsers.
+- Split read/solve work into bounded typed server-function calls and retain completed chunks client-side for retry; this keeps long papers from one oversized request.
+- Keep the AI access breaker in a service-only table and require owner-side clearance after restored access; this prevents denied requests from replaying across reloads.
+- Keep demo sets as explicit samples only, never as an automatic error fallback; students must not receive unrelated answers.

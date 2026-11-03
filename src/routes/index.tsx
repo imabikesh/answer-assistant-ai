@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Bell,
@@ -16,7 +17,10 @@ import {
   UploadCloud,
 } from "lucide-react";
 
-import { type DemoSet, pickDemoSet } from "@/lib/demo-data";
+import { type DemoSet } from "@/lib/demo-data";
+import { readQuestionPaper, solveQuestionChunk } from "@/lib/paper.functions";
+import { validateUpload, type ReadPaper } from "@/lib/paper-validation";
+import { Button } from "@/components/ui/button";
 import {
   type BookletOptions,
   DEPTHS,
@@ -38,6 +42,8 @@ export const Route = createFileRoute("/")({
           "Upload a PDF of questions and get a structured booklet with worked solutions, hints and an answer key — downloadable as PDF or DOCX.",
       },
       { property: "og:title", content: "Vellum · Study Compiler" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content:
@@ -48,9 +54,9 @@ export const Route = createFileRoute("/")({
   component: StudioPage,
 });
 
-type Source = { name: string; sizeMb: string; pages: number };
+type Source = { name: string; sizeMb: string; pages: number | null; fileType: string };
 
-type Stage = "empty" | "generating" | "ready";
+type Stage = "empty" | "reading" | "solving" | "error" | "generating" | "ready";
 
 function StudioPage() {
   const [source, setSource] = useState<Source | null>(null);
@@ -59,6 +65,15 @@ function StudioPage() {
   const [dragging, setDragging] = useState(false);
   const [excluded, setExcluded] = useState<number[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const readFile = useServerFn(readQuestionPaper);
+  const solveChunk = useServerFn(solveQuestionChunk);
+  const processing = stage === "reading" || stage === "solving";
+  const [progress, setProgress] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [retryable, setRetryable] = useState(false);
+  const [retryAt, setRetryAt] = useState(0);
+  const jobRef = useRef(0);
+  const pendingRef = useRef<{ file: File; paper: ReadPaper | null; results: DemoSet[] } | null>(null);
 
   const [options, setOptions] = useState<BookletOptions>({
     format: "pdf",
@@ -70,18 +85,61 @@ function StudioPage() {
     title: "",
   });
 
-  const acceptFile = useCallback((file: File) => {
-    const demo = pickDemoSet(file.name);
-    setSource({
-      name: file.name,
-      sizeMb: `${Math.max(0.1, file.size / 1024 / 1024).toFixed(1)} MB`,
-      pages: 8 + (file.name.length % 9),
-    });
-    setSet(demo);
+  const processFile = useCallback(async (file: File, resume = false) => {
+    const job = ++jobRef.current;
+    setError(null);
+    setRetryable(false);
+    setSet(null);
     setExcluded([]);
-    setStage("ready");
-    setOptions((o) => ({ ...o, title: demo.title }));
-  }, []);
+    const pending = resume && pendingRef.current?.file === file
+      ? pendingRef.current : { file, paper: null, results: [] };
+    pendingRef.current = pending;
+    try {
+      validateUpload(file.name, file.size);
+      setSource({ name: file.name, sizeMb: `${(file.size / 1024 / 1024).toFixed(2)} MB`, pages: null, fileType: file.name.split(".").pop()?.toUpperCase() ?? "" });
+      if (!pending.paper) {
+        setStage("reading");
+        setProgress("Reading your question paper…");
+        const form = new FormData();
+        form.set("file", file);
+        const result = await readFile({ data: form });
+        if (job !== jobRef.current) return;
+        if (!result.ok) {
+          setRetryable(result.retryable);
+          throw new Error(result.error);
+        }
+        pending.paper = result.paper;
+      }
+      const paper = pending.paper;
+      setSource(s => s ? { ...s, pages: paper.pages, fileType: paper.fileType } : s);
+      setStage("solving");
+      for (let i = pending.results.length; i < paper.chunks.length; i++) {
+        const chunk = paper.chunks[i];
+        if (!chunk) continue;
+        setProgress(`Generating solutions… ${i + 1} of ${paper.chunks.length}`);
+        const result = await solveChunk({ data: { text: chunk.text, pages: paper.pages } });
+        if (job !== jobRef.current) return;
+        if (!result.ok) {
+          setRetryable(result.retryable);
+          setRetryAt(Date.now() + 60_000);
+          throw new Error(result.error);
+        }
+        pending.results.push(result.set);
+      }
+      const first = pending.results.find(result => result.questions.length > 0);
+      const questions = pending.results.flatMap(result => result.questions).map((q, index) => ({ ...q, id: index + 1 }));
+      if (!first || !questions.length) throw new Error("No questions were found in this file. Please upload a paper containing questions.");
+      const solved = { subject: first.subject, title: first.title, questions };
+      setSet(solved);
+      setOptions(o => ({ ...o, title: solved.title }));
+      setStage("ready");
+    } catch (cause) {
+      if (job !== jobRef.current) return;
+      setError(cause instanceof Error ? cause.message : "The paper couldn't be processed. Please try again.");
+      setStage("error");
+    }
+  }, [readFile, solveChunk]);
+  const acceptFile = (file: File) => { void processFile(file); };
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -145,7 +203,7 @@ function StudioPage() {
               <div className="flex items-center gap-2.5">
                 <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-paper/70 px-3 py-1.5 text-[12px] text-mute springy hover:border-sage/40 md:flex">
                   <Search className="size-3.5" />
-                  <span>{source ? "Autosaved just now" : "Demo data · no account needed"}</span>
+                  <span>{source ? "Autosaved just now" : "No account needed"}</span>
                 </div>
                 <button className="relative grid size-9 place-items-center rounded-full border border-white/10 bg-paper/70 text-mute springy wobbly hover:text-sage">
                   <Bell className="size-4" />
@@ -166,12 +224,31 @@ function StudioPage() {
           </header>
 
           <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-6 sm:px-7">
+            {(processing || error) && (
+              <Panel delay={0}>
+                <div role={error ? "alert" : "status"} aria-live="polite" className="flex flex-wrap items-center gap-3">
+                  <Sparkles className={`size-4 text-sage ${processing ? "spin-slow" : ""}`} />
+                  <p className="min-w-0 flex-1 text-sm text-mute">{error ?? progress}</p>
+                  {error && retryable && (
+                    <Button variant="ghost" onClick={() => {
+                      if (Date.now() < retryAt) { setError("Please wait a minute before retrying so the AI service can recover."); return; }
+                      const pending = pendingRef.current;
+                      if (pending) void processFile(pending.file, true);
+                    }} className="rounded-full text-sage springy">
+                      <RotateCcw /> Try again
+                    </Button>
+                  )}
+                  {error && <Button variant="ghost" onClick={() => inputRef.current?.click()} className="rounded-full text-rust springy">Replace</Button>}
+                </div>
+                {processing && <div className="mt-3 h-1 overflow-hidden rounded-full bg-sand"><div className="scan h-full w-full bg-sage" /></div>}
+              </Panel>
+            )}
             {!source || !activeSet ? (
               <UploadPane
                 dragging={dragging}
                 setDragging={setDragging}
                 onDrop={onDrop}
-                onPick={() => inputRef.current?.click()}
+                onPick={() => { if (!processing) inputRef.current?.click(); }}
               />
             ) : (
               <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
@@ -179,12 +256,12 @@ function StudioPage() {
                   <Panel delay={0}>
                     <div className="flex items-start gap-3">
                       <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-sand font-mono text-[11px] font-bold text-sage floaty">
-                        PDF
+                        {source.fileType}
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold">{source.name}</p>
                         <p className="mt-0.5 font-mono text-[11px] text-mute">
-                          {source.pages} pages · {set!.questions.length} questions found
+                          {source.pages !== null ? `${source.pages} pages` : "Pages unavailable"} · {set?.questions.length ?? 0} questions found
                         </p>
                       </div>
                       <button
@@ -284,7 +361,7 @@ function StudioPage() {
                   <Panel delay={350}>
                     <Label icon={<ListChecks className="size-3" />}>Questions included</Label>
                     <div className="mt-3 space-y-1.5">
-                      {set!.questions.map((q, i) => {
+                      {set?.questions.map((q, i) => {
                         const on = !excluded.includes(q.id);
                         return (
                           <label
@@ -414,7 +491,7 @@ function StudioPage() {
                                 <MiniTag>Hint · {q.hint}</MiniTag>
                               )}
                               {options.includeTopicTags && <MiniTag>Topic · {q.topic}</MiniTag>}
-                              {options.includeSourceRefs && (
+                              {options.includeSourceRefs && q.page !== null && (
                                 <MiniTag>Source · p. {q.page}</MiniTag>
                               )}
                             </div>
@@ -459,6 +536,9 @@ function StudioPage() {
                           setSource(null);
                           setSet(null);
                           setStage("empty");
+                          setError(null);
+                          pendingRef.current = null;
+                          jobRef.current++;
                         }}
                         className="inline-flex items-center gap-1.5 rounded-full border border-white/12 px-3.5 py-2 text-sm font-medium text-mute springy hover:text-ink"
                       >
@@ -672,16 +752,6 @@ function UploadPane({
         </p>
       </div>
 
-      <div
-        style={{ animationDelay: "320ms" }}
-        className="rise mt-6 rounded-2xl border border-white/8 bg-paper/60 p-4"
-      >
-        <p className="text-[12px] leading-relaxed text-mute">
-          <span className="font-semibold text-sage">Prototype note ·</span> this build uses demo
-          question banks instead of a live model, so any file you drop returns a sample booklet you
-          can fully customise and export.
-        </p>
-      </div>
     </div>
   );
 }
