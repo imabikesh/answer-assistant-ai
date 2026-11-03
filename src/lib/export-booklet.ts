@@ -7,7 +7,7 @@ import {
   TextRun,
 } from "docx";
 import { jsPDF } from "jspdf";
-import { saveAs } from "file-saver";
+import FileSaver from "file-saver";
 
 import type { DemoSet } from "./demo-data";
 import { type BookletOptions, DEPTH_LABEL, fileStem, solutionText } from "./booklet";
@@ -115,7 +115,7 @@ export async function downloadDocx(
 
   const doc = new Document({ sections: [{ children }] });
   const blob = await Packer.toBlob(doc);
-  saveAs(blob, `${fileStem(options.title)}.docx`);
+  FileSaver.saveAs(blob, `${fileStem(options.title)}.docx`);
 }
 
 export function downloadPdf(set: DemoSet, options: BookletOptions, sourceName: string) {

@@ -83,7 +83,11 @@ export function validateSolvedPaper(value: unknown, pages: number | null) {
     questions: parsed.data.questions.map((q, index) => {
       const { options, ...rest } = q;
       const page = pages !== null && q.page !== null && Number.isInteger(q.page) && q.page > 0 && q.page <= pages ? q.page : null;
-      return { ...rest, id: index + 1, page, ...(options?.length ? { options } : {}) };
+      return {
+        ...rest, id: index + 1, page,
+        prompt: q.prompt.replace(/^\s*(?:(?:Question|Q)\s*)?\d+[.):]\s*/i, ""),
+        ...(options?.length ? { options: options.map(option => option.replace(/^\s*[A-Z][.)]\s*/i, "")) } : {}),
+      };
     }),
   };
 }
