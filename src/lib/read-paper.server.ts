@@ -36,7 +36,7 @@ export async function readPaper(file: File): Promise<ReadPaper> {
           throw new Error("Some pages have no readable text and may be scanned or blank. Please remove those pages or upload a text-based version; scanned pages aren't supported yet.");
         }
         text = result.text.map((page, i) => `[Page ${i + 1}]\n${page}`).join("\n\n");
-      } finally { await pdf.destroy(); }
+      } finally { await pdf.loadingTask.destroy(); }
     } else if (extension === "docx") {
       const parts = unzipSync(bytes, {
         filter: entry => {
